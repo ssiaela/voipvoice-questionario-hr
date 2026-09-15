@@ -10,6 +10,22 @@ import autoTable from 'jspdf-autotable'
 const NOTE='I punteggi descrivono tendenze emerse dalle risposte e servono a orientare il colloquio. Non costituiscono una valutazione psicologica o una misurazione psicometrica validata.'
 const comps=['Accountability e affidabilità','Problem solving e analisi','Collaborazione e comunicazione','Adattabilità','Orientamento al risultato','Autonomia e iniziativa']
 
+const COMPETENCY_META={
+  'Accountability e affidabilità':{color:'#2563EB',lines:['Accountability','e affidabilità']},
+  'Problem solving e analisi':{color:'#7C3AED',lines:['Problem solving','e analisi']},
+  'Collaborazione e comunicazione':{color:'#10B981',lines:['Collaborazione','e comunicazione']},
+  'Adattabilità':{color:'#F59E0B',lines:['Adattabilità']},
+  'Orientamento al risultato':{color:'#EF4444',lines:['Orientamento','al risultato']},
+  'Autonomia e iniziativa':{color:'#06B6D4',lines:['Autonomia','e iniziativa']}
+}
+function competencyMeta(name){return COMPETENCY_META[name]||{color:'#0874BD',lines:[name]}}
+function RadarAxisTick({payload,x,y,textAnchor}){
+  const meta=competencyMeta(payload?.value)
+  const lines=meta.lines||[payload?.value||'']
+  const startDy=lines.length>1?-6:4
+  return <g transform={`translate(${x},${y})`}><text textAnchor={textAnchor||'middle'} fill={meta.color} fontSize="12" fontWeight="700">{lines.map((line,i)=><tspan key={line} x="0" dy={i===0?startDy:14}>{line}</tspan>)}</text></g>
+}
+
 const THEME_KEY='vv-hr-theme'
 function resolvedTheme(theme){if(theme==='system')return window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';return theme}
 function applyTheme(theme){document.documentElement.dataset.theme=resolvedTheme(theme)}
@@ -68,7 +84,7 @@ function Dashboard(){
     <div className="dashboard-lower">
       <section className="panel dashboard-panel results-panel">
         <div className="panel-title-row"><div><h2>Ultimi risultati</h2><p>Una lettura rapida degli ultimi test completati</p></div><button className="panel-link" onClick={()=>nav('/hr/risultati')}>Vedi tutti <ArrowRight size={15}/></button></div>
-        {results.length?<div className="result-card-list">{results.map((r,i)=>{const top=Object.entries(r.competencies||{}).sort((a,b)=>Number(b[1].score)-Number(a[1].score)).slice(0,3);return <article className="result-card-row" key={i}><div className="result-person"><span className="mini-avatar">{(r.candidates?.first_name?.[0]||'')+(r.candidates?.last_name?.[0]||'')}</span><div><strong>{r.candidates?.first_name} {r.candidates?.last_name}</strong><small>{r.candidates?.position}</small><small>{fmtDate(r.completed_at)}</small></div></div><div className="result-highlights">{top.map(([name,v])=><div className="result-highlight" key={name}><div><span title={name}>{name}</span><b>{Number(v.score).toFixed(0)}</b></div><div className="mini-score-track"><i style={{width:`${Math.max(0,Math.min(100,Number(v.score)||0))}%`}}/></div></div>)}</div></article>})}</div>:<Empty text="Nessun questionario completato."/>}
+        {results.length?<div className="result-card-list">{results.map((r,i)=>{const top=Object.entries(r.competencies||{}).sort((a,b)=>Number(b[1].score)-Number(a[1].score)).slice(0,3);return <article className="result-card-row" key={i}><div className="result-person"><span className="mini-avatar">{(r.candidates?.first_name?.[0]||'')+(r.candidates?.last_name?.[0]||'')}</span><div><strong>{r.candidates?.first_name} {r.candidates?.last_name}</strong><small>{r.candidates?.position}</small><small>{fmtDate(r.completed_at)}</small></div></div><div className="result-highlights">{top.map(([name,v])=>{const meta=competencyMeta(name);return <div className="result-highlight" key={name}><div><span title={name}><i className="competency-dot" style={{background:meta.color}}/>{name}</span><b style={{color:meta.color}}>{Number(v.score).toFixed(0)}</b></div><div className="mini-score-track"><i style={{width:`${Math.max(0,Math.min(100,Number(v.score)||0))}%`,background:meta.color}}/></div></div>})}</div></article>})}</div>:<Empty text="Nessun questionario completato."/>}
       </section>
       <aside className="dashboard-side">
         <section className="panel operational-panel"><div className="panel-title-row compact"><div><h2>Riepilogo operativo</h2><p>Informazioni utili a colpo d'occhio</p></div></div><div className="operational-stats"><div className="operational-item"><div className="summary-icon"><BarChart3 size={20}/></div><div><span>Completati ultimi 30 giorni</span><strong>{last30}</strong></div></div><div className="operational-item"><div className="summary-icon"><UserRound size={20}/></div><div><span>Ultima candidatura</span><strong>{latest?`${latest.first_name} ${latest.last_name}`:'—'}</strong><small>{latest?.position||'Nessuna candidatura'}</small></div></div><div className="operational-item"><div className="summary-icon"><FileText size={20}/></div><div><span>Versione attiva</span><strong>{version?`v${version.version_number}`:'—'}</strong><small>{version?.published_at?`Pubblicata ${fmtDate(version.published_at)}`:'Nessuna versione pubblicata'}</small></div></div></div></section>
@@ -89,11 +105,15 @@ function Results(){
   </Page>
 }
 function ResultModal({r,onClose}){
-  const radar=Object.entries(r.competencies||{}).map(([name,v])=>({name:name.split(' ')[0],score:Number(v.score)}))
+  const competencyEntries=comps.map(name=>[name,r.competencies?.[name]]).filter(([,v])=>v)
+  const radar=comps.map(name=>({name,score:Number(r.competencies?.[name]?.score||0),color:competencyMeta(name).color}))
   return <Modal wide onClose={onClose} title={`${r.candidates.first_name} ${r.candidates.last_name}`}>
     <div className="result-toolbar"><div><span>Esporta il test completo</span><small>Include punteggi, competenze e 40 risposte.</small></div><div><button className="btn" onClick={()=>exportResultExcel(r)}><Download size={16}/>Excel</button><button className="btn primary" onClick={()=>exportResultPdf(r)}><FileDown size={16}/>PDF</button></div></div>
     <div className="result-meta"><span>{r.candidates.position}</span><span>v{r.questionnaire_versions.version_number}</span><span>{fmt(r.completed_at)}</span></div>
-    <div className="result-grid"><div><h3>Competenze</h3>{Object.entries(r.competencies||{}).map(([name,v])=><div className="score" key={name}><div><strong>{name}</strong><b>{Number(v.score).toFixed(1)}</b></div><div className="bar"><i style={{width:`${v.score}%`}}/></div><small>{v.label} · {v.interview_guidance}</small><p>{v.suggestion}</p></div>)}<div className="scenario"><span>Punteggio scenari</span><strong>{Number(r.scenario_score).toFixed(1)}/100</strong></div></div><div className="radar"><ResponsiveContainer width="100%" height={330}><RadarChart data={radar}><PolarGrid/><PolarAngleAxis dataKey="name"/><Radar dataKey="score" stroke="currentColor" fill="currentColor" fillOpacity={0.18}/></RadarChart></ResponsiveContainer></div></div>
+    <div className="result-grid">
+      <div className="competency-results"><h3>Competenze</h3>{competencyEntries.map(([name,v])=>{const meta=competencyMeta(name);const score=Math.max(0,Math.min(100,Number(v.score)||0));return <div className="score" key={name}><div className="score-head"><div className="score-name"><i className="competency-dot" style={{background:meta.color}}/><strong>{name}</strong></div><b className="score-badge" style={{color:meta.color,borderColor:`${meta.color}55`,background:`${meta.color}12`}}>{score.toFixed(1)}</b></div><div className="bar"><i style={{width:`${score}%`,background:meta.color}}/></div><small>{v.label} · {v.interview_guidance}</small><p>{v.suggestion}</p></div>})}<div className="scenario"><span>Punteggio scenari</span><strong>{Number(r.scenario_score).toFixed(1)}/100</strong></div></div>
+      <div className="radar-panel"><div className="radar-heading"><h3>Profilo competenze</h3><p>Confronto visivo dei sei punteggi su scala 0–100.</p></div><div className="radar-chart-wrap"><ResponsiveContainer width="100%" height={430}><RadarChart data={radar} outerRadius="64%" margin={{top:52,right:112,bottom:52,left:112}}><PolarGrid stroke="var(--chart-grid)"/><PolarAngleAxis dataKey="name" tick={<RadarAxisTick/>} tickLine={false}/><Radar dataKey="score" stroke="var(--chart-stroke)" fill="var(--chart-fill)" fillOpacity={0.18} strokeWidth={2}/></RadarChart></ResponsiveContainer></div><div className="radar-legend">{radar.map(item=><div key={item.name}><i className="competency-dot" style={{background:item.color}}/><span>{item.name}</span><strong style={{color:item.color}}>{item.score.toFixed(1)}</strong></div>)}</div></div>
+    </div>
     <h3>40 risposte</h3><div className="answers">{(r.answers_snapshot||[]).map(a=><div key={a.number}><b>{a.number}.</b><span>{a.question}</span><strong>{a.answer}. {a.answer_label}</strong></div>)}</div>
   </Modal>
 }
