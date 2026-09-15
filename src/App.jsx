@@ -1,7 +1,7 @@
 import React,{useEffect,useMemo,useState} from 'react'
 import {Routes,Route,Navigate,NavLink,useNavigate,useParams,useLocation} from 'react-router-dom'
 import {supabase} from './supabase'
-import {LayoutDashboard,Users,ClipboardList,Settings,LogOut,BarChart3,Copy,Plus,ChevronLeft,ChevronRight,Save,Clock3,CircleCheckBig,TriangleAlert,FileText,UserRound,ArrowRight,ShieldCheck,Download,FileDown,KeyRound,Moon,Sun,Monitor,LockKeyhole} from 'lucide-react'
+import {LayoutDashboard,Users,ClipboardList,Settings,LogOut,BarChart3,Copy,Plus,ChevronLeft,ChevronRight,Save,Clock3,CircleCheckBig,TriangleAlert,FileText,UserRound,ArrowRight,ShieldCheck,Download,FileDown,KeyRound,Moon,Sun,Monitor,LockKeyhole,UserPlus,UserCog,UserCheck,UserX,Mail} from 'lucide-react'
 import {Radar,RadarChart,PolarGrid,PolarAngleAxis,ResponsiveContainer} from 'recharts'
 import * as XLSX from 'xlsx'
 import jsPDF from 'jspdf'
@@ -39,11 +39,34 @@ function exportResultsExcel(list){if(!list.length)return;const wb=XLSX.utils.boo
 function exportResultPdf(r){const doc=new jsPDF({unit:'mm',format:'a4'});const name=`${r.candidates?.first_name||''} ${r.candidates?.last_name||''}`.trim();doc.setFont('helvetica','bold');doc.setFontSize(18);doc.text('VoipVoice - Risultato questionario',14,18);doc.setFont('helvetica','normal');doc.setFontSize(10);doc.text(`Candidato: ${name}`,14,27);doc.text(`Posizione: ${r.candidates?.position||'-'}`,14,33);doc.text(`Completato: ${fmt(r.completed_at)}   Versione: v${r.questionnaire_versions?.version_number||'-'}`,14,39);autoTable(doc,{startY:47,head:[['Competenza','Punteggio','Fascia','Indicazione colloquio']],body:Object.entries(r.competencies||{}).map(([n,v])=>[n,Number(v.score||0).toFixed(1),v.label||'',v.interview_guidance||'']),styles:{fontSize:8,cellPadding:2.2},headStyles:{fillColor:[8,116,189]}});let y=(doc.lastAutoTable?.finalY||47)+8;doc.setFont('helvetica','bold');doc.setFontSize(10);doc.text(`Punteggio scenari: ${Number(r.scenario_score||0).toFixed(1)}/100`,14,y);doc.setFont('helvetica','normal');doc.setFontSize(8);const note=doc.splitTextToSize(NOTE,180);doc.text(note,14,y+6);autoTable(doc,{startY:y+15,head:[['#','Domanda','Risposta']],body:(r.answers_snapshot||[]).map(a=>[a.number,a.question,`${a.answer}. ${a.answer_label}`]),styles:{fontSize:7,cellPadding:1.8,overflow:'linebreak'},columnStyles:{0:{cellWidth:10},1:{cellWidth:112},2:{cellWidth:56}},headStyles:{fillColor:[8,116,189]}});doc.save(`${resultBaseName(r)}.pdf`)}
 
 
-function App(){useEffect(()=>{const sync=()=>applyTheme(localStorage.getItem(THEME_KEY)||'light');sync();const media=window.matchMedia('(prefers-color-scheme: dark)');media.addEventListener?.('change',sync);window.addEventListener('vv-theme-change',sync);return()=>{media.removeEventListener?.('change',sync);window.removeEventListener('vv-theme-change',sync)}},[]);return <Routes><Route path="/login" element={<Login/>}/><Route path="/q/:token" element={<CandidateTest/>}/><Route path="/hr/*" element={<HrGuard><HrLayout/></HrGuard>}/><Route path="*" element={<Navigate to="/hr" replace/>}/></Routes>}
+function App(){useEffect(()=>{const sync=()=>applyTheme(localStorage.getItem(THEME_KEY)||'light');sync();const media=window.matchMedia('(prefers-color-scheme: dark)');media.addEventListener?.('change',sync);window.addEventListener('vv-theme-change',sync);return()=>{media.removeEventListener?.('change',sync);window.removeEventListener('vv-theme-change',sync)}},[]);return <Routes><Route path="/login" element={<Login/>}/><Route path="/set-password" element={<SetPassword/>}/><Route path="/q/:token" element={<CandidateTest/>}/><Route path="/hr/*" element={<HrGuard><HrLayout/></HrGuard>}/><Route path="*" element={<Navigate to="/hr" replace/>}/></Routes>}
 
 function Login(){const[email,setEmail]=useState(''),[password,setPassword]=useState(''),[error,setError]=useState('');const nav=useNavigate();async function submit(e){e.preventDefault();setError('');const{error}=await supabase.auth.signInWithPassword({email,password});if(error)setError(error.message);else nav('/hr')}return <div className="auth-page"><div className="auth-card"><Brand/><h1>Area HR</h1><p>Accesso riservato agli utenti autorizzati.</p><form onSubmit={submit}><label>Email<input type="email" required value={email} onChange={e=>setEmail(e.target.value)}/></label><label>Password<input type="password" required value={password} onChange={e=>setPassword(e.target.value)}/></label>{error&&<div className="error">{error}</div>}<button className="btn primary">Accedi</button></form></div></div>}
+function SetPassword(){
+  const[ready,setReady]=useState(false),[checking,setChecking]=useState(true),[password,setPassword]=useState(''),[confirmPassword,setConfirmPassword]=useState(''),[message,setMessage]=useState(null),[saving,setSaving]=useState(false)
+  const nav=useNavigate()
+  useEffect(()=>{
+    let alive=true
+    supabase.auth.getSession().then(({data})=>{if(alive){setReady(Boolean(data.session));setChecking(false)}})
+    const{data:{subscription}}=supabase.auth.onAuthStateChange((_event,session)=>{if(alive){setReady(Boolean(session));setChecking(false)}})
+    return()=>{alive=false;subscription.unsubscribe()}
+  },[])
+  async function submit(e){
+    e.preventDefault();setMessage(null)
+    if(password.length<8)return setMessage({type:'error',text:'La password deve contenere almeno 8 caratteri.'})
+    if(password!==confirmPassword)return setMessage({type:'error',text:'Le password non coincidono.'})
+    setSaving(true)
+    const{error}=await supabase.auth.updateUser({password})
+    setSaving(false)
+    if(error)return setMessage({type:'error',text:error.message})
+    setMessage({type:'success',text:'Password impostata correttamente.'})
+    setTimeout(()=>nav('/hr'),700)
+  }
+  if(checking)return <Loading/>
+  return <div className="auth-page"><div className="auth-card"><Brand/><h1>Imposta la password</h1>{ready?<><p>Completa l’attivazione della tua utenza HR.</p><form onSubmit={submit}><label>Nuova password<input type="password" minLength="8" autoComplete="new-password" required value={password} onChange={e=>setPassword(e.target.value)}/></label><label>Conferma password<input type="password" minLength="8" autoComplete="new-password" required value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)}/></label>{message&&<div className={message.type==='success'?'success-message':'error'}>{message.text}</div>}<button className="btn primary" disabled={saving}>{saving?'Salvataggio…':'Imposta password'}</button></form></>:<><p>Il link di invito non è valido o è scaduto.</p><button className="btn" onClick={()=>nav('/login')}>Torna al login</button></>}</div></div>
+}
 function Brand(){return <div className="brand"><img src="/logo-voipvoice.svg" alt="VoipVoice" className="brand-logo"/><span>People & Culture</span></div>}
-function HrGuard({children}){const[state,setState]=useState('loading');useEffect(()=>{(async()=>{const{data:{session}}=await supabase.auth.getSession();if(!session)return setState('no');const{data}=await supabase.from('hr_users').select('id').eq('id',session.user.id).maybeSingle();setState(data?'ok':'no')})()},[]);if(state==='loading')return <Loading/>;if(state==='no')return <Navigate to="/login" replace/>;return children}
+function HrGuard({children}){const[state,setState]=useState('loading');useEffect(()=>{(async()=>{const{data:{session}}=await supabase.auth.getSession();if(!session)return setState('no');const{data}=await supabase.from('hr_users').select('id,active').eq('id',session.user.id).maybeSingle();setState(data?.active?'ok':'no')})()},[]);if(state==='loading')return <Loading/>;if(state==='no')return <Navigate to="/login" replace/>;return children}
 function HrLayout(){const nav=useNavigate();const[email,setEmail]=useState('');const items=[['/hr',LayoutDashboard,'Dashboard'],['/hr/candidature',Users,'Candidature'],['/hr/risultati',BarChart3,'Risultati'],['/hr/questionario',ClipboardList,'Questionario'],['/hr/impostazioni',Settings,'Impostazioni']];useEffect(()=>{supabase.auth.getUser().then(({data})=>setEmail(data.user?.email||''))},[]);const initials=(email||'HR').split('@')[0].split(/[._-]/).map(x=>x[0]).join('').slice(0,2).toUpperCase();return <div className="shell"><aside><Brand/><nav>{items.map(([to,I,label])=><NavLink key={to} end={to==='/hr'} to={to}><I size={18}/>{label}</NavLink>)}</nav><div className="sidebar-foot"><div className="sidebar-version"><ShieldCheck size={15}/><span>Area HR protetta</span></div><button className="logout" onClick={async()=>{await supabase.auth.signOut();nav('/login')}}><LogOut size={17}/>Esci</button></div></aside><div className="workspace"><div className="topbar"><div><span className="topbar-kicker">VoipVoice</span><strong>People & Culture</strong></div><div className="topbar-user"><span className="avatar">{initials}</span><div><strong>{email||'Utente HR'}</strong><small>HR autorizzato</small></div></div></div><main><Routes><Route index element={<Dashboard/>}/><Route path="candidature" element={<Candidates/>}/><Route path="risultati" element={<Results/>}/><Route path="questionario" element={<QuestionnaireEditor/>}/><Route path="impostazioni" element={<SettingsPage/>}/></Routes></main></div></div>}
 function Page({title,subtitle,children,action}){return <><header className="page-head"><div><h1>{title}</h1>{subtitle&&<p>{subtitle}</p>}</div>{action}</header>{children}</>}
 function Loading(){return <div className="center">Caricamento…</div>}
@@ -123,8 +146,60 @@ function CandidateTest(){const{token}=useParams();const[data,setData]=useState(n
 function QuestionnaireEditor(){const[payload,setPayload]=useState(null),[saving,setSaving]=useState(false);useEffect(()=>{load()},[]);function move(i,dir){const qs=[...payload.questions],j=i+dir;if(j<0||j>=qs.length)return;[qs[i],qs[j]]=[qs[j],qs[i]];setPayload({...payload,questions:qs})}async function load(){const{data,error}=await supabase.rpc('hr_questionnaire_json',{p_version_id:null});if(error)alert(error.message);else setPayload(data)}function setQ(i,patch){const qs=[...payload.questions];qs[i]={...qs[i],...patch};setPayload({...payload,questions:qs})}async function save(){if(!confirm('Creare e pubblicare una nuova versione del questionario?'))return;setSaving(true);const{data,error}=await supabase.rpc('hr_save_questionnaire_version',{p_payload:payload,p_publish:true});setSaving(false);if(error)alert(error.message);else{alert(`Versione ${data} pubblicata.`);load()}}if(!payload)return <Loading/>;return <Page title="Questionario" subtitle="Ogni salvataggio pubblica una nuova versione" action={<button className="btn primary" onClick={save} disabled={saving}><Save size={17}/>{saving?'Salvataggio…':'Salva nuova versione'}</button>}><div className="editor">{payload.questions.map((q,i)=><details className="panel qedit" key={q.number}><summary><b>{q.number}</b><span>{q.text}</span><em>{q.type==='scenario'?'Scenario':q.reverse?'Likert · inversa':'Likert'}</em></summary><div className="reorder"><button className="btn" onClick={()=>move(i,-1)} disabled={i===0}>↑ Sposta su</button><button className="btn" onClick={()=>move(i,1)} disabled={i===payload.questions.length-1}>↓ Sposta giù</button></div><label>Testo<textarea value={q.text} onChange={e=>setQ(i,{text:e.target.value})}/></label><div className="form-grid"><label>Competenza primaria<select value={q.primary||''} onChange={e=>setQ(i,{primary:e.target.value})}>{comps.map(c=><option key={c}>{c}</option>)}</select></label><label>Competenza secondaria<select value={q.secondary||''} onChange={e=>setQ(i,{secondary:e.target.value||null})}><option value="">Nessuna</option>{comps.map(c=><option key={c}>{c}</option>)}</select></label>{q.type==='likert'&&<label className="checkline"><input type="checkbox" checked={q.reverse} onChange={e=>setQ(i,{reverse:e.target.checked})}/>Item inverso</label>}</div><h4>Risposte e punteggi</h4>{q.options.map((o,j)=><div className="option-edit" key={o.value}><b>{o.value}</b><input value={o.label} onChange={e=>{const opts=[...q.options];opts[j]={...o,label:e.target.value};setQ(i,{options:opts})}}/><input type="number" min="1" max="5" value={o.score} onChange={e=>{const opts=[...q.options];opts[j]={...o,score:Number(e.target.value)};setQ(i,{options:opts})}}/></div>)}</details>)}<section className="panel"><h2>Fasce di valutazione</h2>{payload.ranges.map((r,i)=><div className="range-edit" key={i}><input type="number" value={r.min} onChange={e=>{const x=[...payload.ranges];x[i]={...r,min:Number(e.target.value)};setPayload({...payload,ranges:x})}}/><input type="number" value={r.max} onChange={e=>{const x=[...payload.ranges];x[i]={...r,max:Number(e.target.value)};setPayload({...payload,ranges:x})}}/><input value={r.label} onChange={e=>{const x=[...payload.ranges];x[i]={...r,label:e.target.value};setPayload({...payload,ranges:x})}}/><input value={r.guidance} onChange={e=>{const x=[...payload.ranges];x[i]={...r,guidance:e.target.value};setPayload({...payload,ranges:x})}}/></div>)}</section><section className="panel"><h2>Suggerimenti HR</h2>{comps.map(c=><label key={c}>{c}<textarea value={payload.guidance[c]||''} onChange={e=>setPayload({...payload,guidance:{...payload.guidance,[c]:e.target.value}})}/></label>)}</section></div></Page>}
 function SettingsPage(){
   const[email,setEmail]=useState(''),[theme,setTheme]=useState(()=>localStorage.getItem(THEME_KEY)||'light'),[currentPassword,setCurrentPassword]=useState(''),[newPassword,setNewPassword]=useState(''),[confirmPassword,setConfirmPassword]=useState(''),[message,setMessage]=useState(null),[saving,setSaving]=useState(false)
-  useEffect(()=>{supabase.auth.getUser().then(({data})=>setEmail(data.user?.email||''))},[])
+  const[profile,setProfile]=useState(null),[hrUsers,setHrUsers]=useState([]),[usersLoading,setUsersLoading]=useState(false),[userMessage,setUserMessage]=useState(null),[creatingUser,setCreatingUser]=useState(false)
+  const[userForm,setUserForm]=useState({full_name:'',email:'',role:'hr'})
+
+  useEffect(()=>{loadAccount()},[])
+
+  async function loadAccount(){
+    const{data:{user}}=await supabase.auth.getUser()
+    if(!user)return
+    setEmail(user.email||'')
+    const{data:p}=await supabase.from('hr_users').select('id,email,full_name,role,active').eq('id',user.id).maybeSingle()
+    setProfile(p||null)
+    if(p?.role==='admin')loadHrUsers()
+  }
+
+  async function loadHrUsers(){
+    setUsersLoading(true)
+    const{data,error}=await supabase.from('hr_users').select('id,full_name,email,role,active,created_at').order('created_at',{ascending:true})
+    setUsersLoading(false)
+    if(error)return setUserMessage({type:'error',text:error.message})
+    setHrUsers(data||[])
+  }
+
+  async function callUserAdmin(body){
+    const{data,error}=await supabase.functions.invoke('manage-hr-users',{body})
+    if(error)throw new Error(error.message||'Operazione non riuscita')
+    if(data?.error)throw new Error(data.error)
+    return data
+  }
+
+  async function createHrUser(e){
+    e.preventDefault();setUserMessage(null);setCreatingUser(true)
+    try{
+      await callUserAdmin({action:'create',full_name:userForm.full_name.trim(),email:userForm.email.trim().toLowerCase(),role:userForm.role,site_url:window.location.origin})
+      setUserForm({full_name:'',email:'',role:'hr'})
+      setUserMessage({type:'success',text:'Utenza creata. Supabase ha inviato l’email di invito per impostare la password.'})
+      await loadHrUsers()
+    }catch(err){setUserMessage({type:'error',text:err.message})}
+    finally{setCreatingUser(false)}
+  }
+
+  async function setUserActive(userId,active){
+    setUserMessage(null)
+    try{await callUserAdmin({action:'set_active',user_id:userId,active});await loadHrUsers();setUserMessage({type:'success',text:active?'Utenza riattivata.':'Utenza disattivata.'})}
+    catch(err){setUserMessage({type:'error',text:err.message})}
+  }
+
+  async function setUserRole(userId,role){
+    setUserMessage(null)
+    try{await callUserAdmin({action:'set_role',user_id:userId,role});await loadHrUsers();setUserMessage({type:'success',text:'Ruolo aggiornato.'})}
+    catch(err){setUserMessage({type:'error',text:err.message})}
+  }
+
   function changeTheme(value){setTheme(value);setThemePreference(value)}
+
   async function changePassword(e){
     e.preventDefault();setMessage(null)
     if(newPassword.length<8)return setMessage({type:'error',text:'La nuova password deve contenere almeno 8 caratteri.'})
@@ -137,14 +212,45 @@ function SettingsPage(){
     if(error)return setMessage({type:'error',text:error.message})
     setCurrentPassword('');setNewPassword('');setConfirmPassword('');setMessage({type:'success',text:'Password aggiornata correttamente.'})
   }
+
   async function signOutEverywhere(){if(!confirm('Disconnettere questo account HR da tutti i dispositivi?'))return;await supabase.auth.signOut({scope:'global'});window.location.href='/login'}
   const themes=[{value:'light',label:'Chiaro',icon:Sun},{value:'dark',label:'Scuro',icon:Moon},{value:'system',label:'Sistema',icon:Monitor}]
-  return <Page title="Impostazioni" subtitle="Account, sicurezza e preferenze dell’area HR">
+  const isAdmin=profile?.role==='admin'
+
+  return <Page title="Impostazioni" subtitle="Account, utenze HR, sicurezza e preferenze dell’area HR">
     <div className="settings-grid">
+      {isAdmin&&<section className="panel settings-card settings-wide user-management-card">
+        <div className="settings-card-head"><div className="settings-card-icon"><UserCog size={20}/></div><div><h2>Utenze HR</h2><p>Crea e gestisci gli accessi all’area riservata.</p></div></div>
+        <div className="user-management-layout">
+          <form className="new-user-box" onSubmit={createHrUser}>
+            <div className="new-user-title"><UserPlus size={18}/><div><strong>Nuova utenza</strong><span>L’utente riceverà un invito via email.</span></div></div>
+            <label>Nome e cognome<input required value={userForm.full_name} onChange={e=>setUserForm({...userForm,full_name:e.target.value})} placeholder="Nome Cognome"/></label>
+            <label>Email<input type="email" required value={userForm.email} onChange={e=>setUserForm({...userForm,email:e.target.value})} placeholder="nome@voipvoice.it"/></label>
+            <label>Ruolo<select value={userForm.role} onChange={e=>setUserForm({...userForm,role:e.target.value})}><option value="hr">HR</option><option value="admin">HR Admin</option></select></label>
+            <button className="btn primary" disabled={creatingUser}><UserPlus size={16}/>{creatingUser?'Creazione…':'Crea utenza e invia invito'}</button>
+          </form>
+
+          <div className="hr-users-box">
+            <div className="hr-users-head"><div><strong>Utenti autorizzati</strong><span>{hrUsers.length} utenz{hrUsers.length===1?'a':'e'}</span></div><button className="icon-action" title="Aggiorna" onClick={loadHrUsers} disabled={usersLoading}><Users size={16}/></button></div>
+            {usersLoading?<div className="users-loading">Caricamento utenze…</div>:<div className="hr-users-list">{hrUsers.map(u=>{const self=u.id===profile?.id;return <div className={'hr-user-row '+(!u.active?'is-disabled':'')} key={u.id}>
+              <div className="hr-user-avatar">{(u.full_name||u.email||'HR').split(/[\s@._-]+/).filter(Boolean).slice(0,2).map(x=>x[0]).join('').toUpperCase()}</div>
+              <div className="hr-user-identity"><strong>{u.full_name||'Utente HR'} {self&&<span className="self-badge">Tu</span>}</strong><span><Mail size={12}/>{u.email||'Email non disponibile'}</span></div>
+              <div className="hr-user-role"><select value={u.role||'hr'} disabled={self} onChange={e=>setUserRole(u.id,e.target.value)}><option value="hr">HR</option><option value="admin">HR Admin</option></select></div>
+              <div className="hr-user-state"><span className={'user-status '+(u.active?'active':'inactive')}>{u.active?<><UserCheck size={13}/>Attiva</>:<><UserX size={13}/>Disattivata</>}</span></div>
+              <div className="hr-user-actions">{!self&&<><button className="icon-action" title={u.active?'Disattiva utenza':'Riattiva utenza'} onClick={()=>setUserActive(u.id,!u.active)}>{u.active?<UserX size={16}/>:<UserCheck size={16}/>}</button></>}</div>
+            </div>})}{!hrUsers.length&&<Empty text="Nessuna utenza HR disponibile."/>}</div>}
+          </div>
+        </div>
+        {userMessage&&<div className={userMessage.type==='success'?'success-message user-admin-message':'error user-admin-message'}>{userMessage.text}</div>}
+        <div className="admin-note"><ShieldCheck size={15}/><span>Solo gli utenti con ruolo <strong>HR Admin</strong> possono creare, disattivare, riattivare o modificare altre utenze.</span></div>
+      </section>}
+
+      {!isAdmin&&profile&&<section className="panel settings-card settings-wide"><div className="settings-card-head"><div className="settings-card-icon"><Users size={20}/></div><div><h2>Utenze HR</h2><p>La gestione degli utenti è riservata agli HR Admin.</p></div></div><p className="settings-help">Il tuo account ha ruolo <strong>HR</strong>. Per creare o modificare altre utenze è necessario rivolgersi a un HR Admin.</p></section>}
+
       <section className="panel settings-card settings-wide"><div className="settings-card-head"><div className="settings-card-icon"><KeyRound size={20}/></div><div><h2>Password HR</h2><p>Aggiorna la password dell’account autenticato.</p></div></div><div className="account-email"><span>Account</span><strong>{email||'—'}</strong></div><form className="password-form" onSubmit={changePassword}><label>Password attuale<input type="password" autoComplete="current-password" required value={currentPassword} onChange={e=>setCurrentPassword(e.target.value)}/></label><div className="form-grid"><label>Nuova password<input type="password" minLength="8" autoComplete="new-password" required value={newPassword} onChange={e=>setNewPassword(e.target.value)}/></label><label>Conferma nuova password<input type="password" minLength="8" autoComplete="new-password" required value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)}/></label></div>{message&&<div className={message.type==='success'?'success-message':'error'}>{message.text}</div>}<div><button className="btn primary" disabled={saving}>{saving?'Aggiornamento…':'Aggiorna password'}</button></div></form></section>
       <section className="panel settings-card"><div className="settings-card-head"><div className="settings-card-icon"><Moon size={20}/></div><div><h2>Aspetto</h2><p>Scegli il tema dell’interfaccia.</p></div></div><div className="theme-options">{themes.map(({value,label,icon:I})=><button key={value} className={'theme-option '+(theme===value?'active':'')} onClick={()=>changeTheme(value)}><I size={19}/><span>{label}</span>{theme===value&&<CircleCheckBig size={16}/>}</button>)}</div></section>
       <section className="panel settings-card"><div className="settings-card-head"><div className="settings-card-icon"><LockKeyhole size={20}/></div><div><h2>Sessioni</h2><p>Revoca le sessioni aperte su altri dispositivi.</p></div></div><p className="settings-help">Dopo questa operazione sarà necessario effettuare nuovamente l’accesso con la password HR.</p><button className="btn danger" onClick={signOutEverywhere}>Esci da tutti i dispositivi</button></section>
-      <section className="panel settings-card settings-wide"><div className="settings-card-head"><div className="settings-card-icon"><ShieldCheck size={20}/></div><div><h2>Sicurezza applicativa</h2><p>Configurazione attualmente in uso.</p></div></div><p>Accesso HR tramite Supabase Auth e autorizzazione tramite tabella <code>hr_users</code>. Il candidato utilizza esclusivamente RPC dedicate con token monouso; scoring e risultati non sono esposti alle query anonime.</p></section>
+      <section className="panel settings-card settings-wide"><div className="settings-card-head"><div className="settings-card-icon"><ShieldCheck size={20}/></div><div><h2>Sicurezza applicativa</h2><p>Configurazione attualmente in uso.</p></div></div><p>Accesso HR tramite Supabase Auth e autorizzazione tramite tabella <code>hr_users</code>. Le operazioni amministrative sulle utenze passano da una Supabase Edge Function: la <code>service_role</code> non viene mai esposta nel frontend.</p></section>
       <section className="panel settings-card settings-wide"><div className="settings-card-head"><div className="settings-card-icon"><FileText size={20}/></div><div><h2>Nota metodologica</h2><p>Indicazione da mantenere nell’uso dei risultati.</p></div></div><p>{NOTE}</p></section>
     </div>
   </Page>
