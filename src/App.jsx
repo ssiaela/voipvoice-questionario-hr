@@ -10,7 +10,18 @@ const comps=['Accountability e affidabilità','Problem solving e analisi','Colla
 function App(){return <Routes><Route path="/login" element={<Login/>}/><Route path="/q/:token" element={<CandidateTest/>}/><Route path="/hr/*" element={<HrGuard><HrLayout/></HrGuard>}/><Route path="*" element={<Navigate to="/hr" replace/>}/></Routes>}
 
 function Login(){const[email,setEmail]=useState(''),[password,setPassword]=useState(''),[error,setError]=useState('');const nav=useNavigate();async function submit(e){e.preventDefault();setError('');const{error}=await supabase.auth.signInWithPassword({email,password});if(error)setError(error.message);else nav('/hr')}return <div className="auth-page"><div className="auth-card"><Brand/><h1>Area HR</h1><p>Accesso riservato agli utenti autorizzati.</p><form onSubmit={submit}><label>Email<input type="email" required value={email} onChange={e=>setEmail(e.target.value)}/></label><label>Password<input type="password" required value={password} onChange={e=>setPassword(e.target.value)}/></label>{error&&<div className="error">{error}</div>}<button className="btn primary">Accedi</button></form></div></div>}
-function Brand(){return <div className="brand"><div className="brand-mark">VV</div><div><strong>VoipVoice</strong><span>People & Culture</span></div></div>}
+function Brand(){
+  return (
+    <div className="brand">
+      <img
+        src="/logo-voipvoice.svg"
+        alt="VoipVoice"
+        className="brand-logo"
+      />
+      <span>People & Culture</span>
+    </div>
+  )
+}
 function HrGuard({children}){const[state,setState]=useState('loading');useEffect(()=>{(async()=>{const{data:{session}}=await supabase.auth.getSession();if(!session)return setState('no');const{data}=await supabase.from('hr_users').select('id').eq('id',session.user.id).maybeSingle();setState(data?'ok':'no')})()},[]);if(state==='loading')return <Loading/>;if(state==='no')return <Navigate to="/login" replace/>;return children}
 function HrLayout(){const nav=useNavigate();const items=[['/hr',LayoutDashboard,'Dashboard'],['/hr/candidature',Users,'Candidature'],['/hr/risultati',BarChart3,'Risultati'],['/hr/questionario',ClipboardList,'Questionario'],['/hr/impostazioni',Settings,'Impostazioni']];return <div className="shell"><aside><Brand/><nav>{items.map(([to,I,label])=><NavLink key={to} end={to==='/hr'} to={to}><I size={18}/>{label}</NavLink>)}</nav><button className="logout" onClick={async()=>{await supabase.auth.signOut();nav('/login')}}><LogOut size={17}/>Esci</button></aside><main><Routes><Route index element={<Dashboard/>}/><Route path="candidature" element={<Candidates/>}/><Route path="risultati" element={<Results/>}/><Route path="questionario" element={<QuestionnaireEditor/>}/><Route path="impostazioni" element={<SettingsPage/>}/></Routes></main></div>}
 function Page({title,subtitle,children,action}){return <><header className="page-head"><div><h1>{title}</h1>{subtitle&&<p>{subtitle}</p>}</div>{action}</header>{children}</>}
