@@ -540,3 +540,13 @@ code{background:#edf2f6;color:#35516d;padding:3px 6px;border-radius:5px;font-siz
 }
 
 
+
+/* ===== CANDIDATURE: CANCELLAZIONE ===== */
+.candidate-table-actions{width:82px;text-align:right}
+.delete-action{color:#b42318;border-color:#f1c9c5;background:#fff8f7}
+.delete-action:hover{color:#8f1c13;border-color:#e9aaa4;background:#fff0ee}
+.delete-action:disabled{opacity:.45;cursor:not-allowed}
+.candidate-delete-note{display:flex;align-items:center;gap:7px;margin:-6px 2px 18px;color:#7a8999;font-size:11px}
+:root[data-theme="dark"] .delete-action{color:#ff9a91;border-color:#673632;background:#2a1b1b}
+:root[data-theme="dark"] .delete-action:hover{color:#ffc1bb;border-color:#8a4640;background:#39201f}
+:root[data-theme="dark"] .candidate-delete-note{color:#8fa5b8}
