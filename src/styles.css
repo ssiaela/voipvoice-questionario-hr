@@ -550,3 +550,25 @@ code{background:#edf2f6;color:#35516d;padding:3px 6px;border-radius:5px;font-siz
 :root[data-theme="dark"] .delete-action{color:#ff9a91;border-color:#673632;background:#2a1b1b}
 :root[data-theme="dark"] .delete-action:hover{color:#ffc1bb;border-color:#8a4640;background:#39201f}
 :root[data-theme="dark"] .candidate-delete-note{color:#8fa5b8}
+
+/* ===== FIX LEGGIBILITA QUESTIONARIO - DARK MODE ===== */
+:root[data-theme="dark"] .candidate-card .question{
+  color:#f3f7fb;
+}
+:root[data-theme="dark"] .candidate-card .qmeta{
+  color:#9fb3c7;
+}
+:root[data-theme="dark"] .candidate-top strong{
+  color:#f3f7fb;
+}
+:root[data-theme="dark"] .candidate-top span{
+  color:#9fb3c7;
+}
+:root[data-theme="dark"] .options button b{
+  background:#17334d;
+  color:#b9dcf2;
+}
+:root[data-theme="dark"] .options button.selected b{
+  background:#0d7ecb;
+  color:#fff;
+}
