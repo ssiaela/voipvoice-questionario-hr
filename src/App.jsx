@@ -1,7 +1,7 @@
 import React,{useEffect,useMemo,useState} from 'react'
 import {Routes,Route,Navigate,NavLink,useNavigate,useParams,useLocation} from 'react-router-dom'
 import {supabase} from './supabase'
-import {LayoutDashboard,Users,ClipboardList,Settings,LogOut,BarChart3,Copy,Plus,ChevronLeft,ChevronRight,Save,Clock3,CircleCheckBig,TriangleAlert,FileText,UserRound,ArrowRight,ShieldCheck,Download,FileDown,KeyRound,Moon,Sun,Monitor,LockKeyhole,UserPlus,UserCog,UserCheck,UserX,Mail} from 'lucide-react'
+import {LayoutDashboard,Users,ClipboardList,Settings,LogOut,BarChart3,Copy,Plus,ChevronLeft,ChevronRight,Save,Clock3,CircleCheckBig,TriangleAlert,FileText,UserRound,ArrowRight,ShieldCheck,Download,FileDown,KeyRound,Moon,Sun,Monitor,LockKeyhole,UserPlus,UserCog,UserCheck,UserX,Mail,Trash2} from 'lucide-react'
 import {Radar,RadarChart,PolarGrid,PolarAngleAxis,ResponsiveContainer} from 'recharts'
 import * as XLSX from 'xlsx'
 import jsPDF from 'jspdf'
@@ -30,13 +30,100 @@ const THEME_KEY='vv-hr-theme'
 function resolvedTheme(theme){if(theme==='system')return window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';return theme}
 function applyTheme(theme){document.documentElement.dataset.theme=resolvedTheme(theme)}
 function setThemePreference(theme){localStorage.setItem(THEME_KEY,theme);applyTheme(theme);window.dispatchEvent(new Event('vv-theme-change'))}
+function pdfText(value){return String(value??'').replace(/[‘’]/g,"'").replace(/[–—]/g,'-').replace(/…/g,'...').replace(/·/g,'-')}
 function safeFileName(value){return String(value||'report').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9-_]+/g,'-').replace(/^-+|-+$/g,'').toLowerCase()||'report'}
 function resultBaseName(r){return safeFileName(`${r?.candidates?.first_name||'candidato'}-${r?.candidates?.last_name||''}-${r?.completed_at?.slice?.(0,10)||''}`)}
 function summaryRow(r){const row={Candidato:`${r.candidates?.first_name||''} ${r.candidates?.last_name||''}`.trim(),Posizione:r.candidates?.position||'',Completato:fmt(r.completed_at),Versione:`v${r.questionnaire_versions?.version_number||''}`,'Punteggio scenari':Number(r.scenario_score||0)};for(const[name,v]of Object.entries(r.competencies||{}))row[name]=Number(v.score||0);return row}
 function answerRows(r){return (r.answers_snapshot||[]).map(a=>({Candidato:`${r.candidates?.first_name||''} ${r.candidates?.last_name||''}`.trim(),Posizione:r.candidates?.position||'',Domanda:a.number,Testo:a.question,Risposta:`${a.answer}. ${a.answer_label}`,Punteggio:Number(a.normalized_score||0)}))}
 function exportResultExcel(r){const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet([summaryRow(r)]),'Risultato');XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(answerRows(r)),'Risposte');XLSX.writeFile(wb,`${resultBaseName(r)}.xlsx`)}
 function exportResultsExcel(list){if(!list.length)return;const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(list.map(summaryRow)),'Risultati');XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(list.flatMap(answerRows)),'Risposte');XLSX.writeFile(wb,`risultati-questionario-${new Date().toISOString().slice(0,10)}.xlsx`)}
-function exportResultPdf(r){const doc=new jsPDF({unit:'mm',format:'a4'});const name=`${r.candidates?.first_name||''} ${r.candidates?.last_name||''}`.trim();doc.setFont('helvetica','bold');doc.setFontSize(18);doc.text('VoipVoice - Risultato questionario',14,18);doc.setFont('helvetica','normal');doc.setFontSize(10);doc.text(`Candidato: ${name}`,14,27);doc.text(`Posizione: ${r.candidates?.position||'-'}`,14,33);doc.text(`Completato: ${fmt(r.completed_at)}   Versione: v${r.questionnaire_versions?.version_number||'-'}`,14,39);autoTable(doc,{startY:47,head:[['Competenza','Punteggio','Fascia','Indicazione colloquio']],body:Object.entries(r.competencies||{}).map(([n,v])=>[n,Number(v.score||0).toFixed(1),v.label||'',v.interview_guidance||'']),styles:{fontSize:8,cellPadding:2.2},headStyles:{fillColor:[8,116,189]}});let y=(doc.lastAutoTable?.finalY||47)+8;doc.setFont('helvetica','bold');doc.setFontSize(10);doc.text(`Punteggio scenari: ${Number(r.scenario_score||0).toFixed(1)}/100`,14,y);doc.setFont('helvetica','normal');doc.setFontSize(8);const note=doc.splitTextToSize(NOTE,180);doc.text(note,14,y+6);autoTable(doc,{startY:y+15,head:[['#','Domanda','Risposta']],body:(r.answers_snapshot||[]).map(a=>[a.number,a.question,`${a.answer}. ${a.answer_label}`]),styles:{fontSize:7,cellPadding:1.8,overflow:'linebreak'},columnStyles:{0:{cellWidth:10},1:{cellWidth:112},2:{cellWidth:56}},headStyles:{fillColor:[8,116,189]}});doc.save(`${resultBaseName(r)}.pdf`)}
+function hexToRgb(hex){const value=String(hex||'#0874BD').replace('#','');const normalized=value.length===3?value.split('').map(x=>x+x).join(''):value;return [parseInt(normalized.slice(0,2),16)||8,parseInt(normalized.slice(2,4),16)||116,parseInt(normalized.slice(4,6),16)||189]}
+let pdfLogoCache=null
+async function getPdfLogo(){
+  if(pdfLogoCache)return pdfLogoCache
+  try{
+    const response=await fetch('/logo-voipvoice.svg',{cache:'force-cache'})
+    if(!response.ok)return null
+    const svg=await response.text()
+    const blob=new Blob([svg],{type:'image/svg+xml'})
+    const url=URL.createObjectURL(blob)
+    const img=await new Promise((resolve,reject)=>{const image=new Image();image.onload=()=>resolve(image);image.onerror=reject;image.src=url})
+    const scale=3,canvas=document.createElement('canvas')
+    canvas.width=Math.max(1,img.naturalWidth*scale);canvas.height=Math.max(1,img.naturalHeight*scale)
+    const ctx=canvas.getContext('2d');ctx.drawImage(img,0,0,canvas.width,canvas.height)
+    URL.revokeObjectURL(url)
+    pdfLogoCache={data:canvas.toDataURL('image/png'),ratio:img.naturalWidth/img.naturalHeight}
+    return pdfLogoCache
+  }catch{return null}
+}
+function drawPdfFooter(doc){
+  const pages=doc.getNumberOfPages()
+  for(let page=1;page<=pages;page++){
+    doc.setPage(page);doc.setDrawColor(224,231,239);doc.line(14,286,196,286)
+    doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(110,126,143)
+    doc.text('VoipVoice - People & Culture - Documento riservato HR',14,291)
+    doc.text(`${page} / ${pages}`,196,291,{align:'right'})
+  }
+}
+async function exportResultPdf(r){
+  const doc=new jsPDF({unit:'mm',format:'a4'}),logo=await getPdfLogo()
+  const name=`${r.candidates?.first_name||''} ${r.candidates?.last_name||''}`.trim()||'Candidato'
+  const position=r.candidates?.position||'—',version=`v${r.questionnaire_versions?.version_number||'—'}`
+  const entries=comps.map(n=>[n,r.competencies?.[n]]).filter(([,v])=>v)
+
+  doc.setFillColor(247,250,252);doc.rect(0,0,210,30,'F')
+  if(logo){const w=42,h=Math.min(14,w/logo.ratio);doc.addImage(logo.data,'PNG',14,8,w,h)}
+  else{doc.setFont('helvetica','bold');doc.setFontSize(16);doc.setTextColor(8,116,189);doc.text('VoipVoice',14,17)}
+  doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(86,103,122);doc.text('PEOPLE & CULTURE',196,13,{align:'right'})
+  doc.setFont('helvetica','normal');doc.setFontSize(7);doc.text('Questionario attitudinale pre-colloquio',196,18,{align:'right'})
+  doc.setDrawColor(8,116,189);doc.setLineWidth(.8);doc.line(14,29,196,29)
+
+  doc.setFont('helvetica','bold');doc.setFontSize(21);doc.setTextColor(22,36,56);doc.text('Risultato questionario',14,43)
+  doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(103,122,143);doc.text('Report di supporto al colloquio - uso interno HR',14,49)
+
+  doc.setFillColor(248,250,252);doc.setDrawColor(226,232,239);doc.roundedRect(14,57,182,27,3,3,'FD')
+  doc.setFont('helvetica','bold');doc.setFontSize(12);doc.setTextColor(24,48,72);doc.text(name,20,67)
+  doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(103,122,143);doc.text(position,20,73)
+  doc.text(`Completato: ${fmt(r.completed_at)}`,20,79);doc.text(`Versione: ${version}`,190,79,{align:'right'})
+
+  doc.setFont('helvetica','bold');doc.setFontSize(12);doc.setTextColor(24,48,72);doc.text('Profilo competenze',14,96)
+  let y=105
+  for(const [competency,value] of entries){
+    const score=Math.max(0,Math.min(100,Number(value?.score)||0)),meta=competencyMeta(competency),rgb=hexToRgb(meta.color)
+    doc.setFillColor(...rgb);doc.circle(16,y-1.3,1.4,'F')
+    doc.setFont('helvetica','bold');doc.setFontSize(8.8);doc.setTextColor(28,50,72);doc.text(competency,20,y)
+    doc.setTextColor(...rgb);doc.text(score.toFixed(1),190,y,{align:'right'})
+    doc.setFillColor(233,238,243);doc.roundedRect(20,y+3,170,3,1.5,1.5,'F')
+    doc.setFillColor(...rgb);doc.roundedRect(20,y+3,170*(score/100),3,1.5,1.5,'F')
+    doc.setFont('helvetica','normal');doc.setFontSize(6.8);doc.setTextColor(108,125,143)
+    const label=String(value?.label||'');doc.text(label.length>92?label.slice(0,89)+'…':label,20,y+11)
+    y+=18
+  }
+
+  const scenario=Math.max(0,Math.min(100,Number(r.scenario_score)||0))
+  doc.setFillColor(240,247,252);doc.setDrawColor(210,228,241);doc.roundedRect(14,y-1,182,17,3,3,'FD')
+  doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(31,66,94);doc.text('Punteggio scenari',20,y+6)
+  doc.setFontSize(15);doc.setTextColor(8,116,189);doc.text(`${scenario.toFixed(1)} / 100`,190,y+7,{align:'right'})
+  y+=24
+
+  doc.setFillColor(249,250,251);doc.setDrawColor(230,234,239);doc.roundedRect(14,y,182,28,3,3,'FD')
+  doc.setFont('helvetica','bold');doc.setFontSize(8);doc.setTextColor(60,78,96);doc.text('Nota metodologica',20,y+8)
+  doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(100,117,133)
+  doc.text(doc.splitTextToSize(NOTE,168),20,y+14)
+
+  doc.addPage()
+  doc.setFont('helvetica','bold');doc.setFontSize(15);doc.setTextColor(24,48,72);doc.text('Dettaglio competenze',14,20)
+  doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(112,128,145);doc.text(pdfText(`${name} - ${position}`),14,26)
+  autoTable(doc,{startY:33,margin:{left:14,right:14,top:18,bottom:17},head:[['Competenza','Punti','Fascia','Indicazione colloquio','Approfondimento']],body:entries.map(([n,v])=>[pdfText(n),Number(v.score||0).toFixed(1),pdfText(v.label||''),pdfText(v.interview_guidance||''),pdfText(v.suggestion||'')]),styles:{fontSize:6.7,cellPadding:2.2,overflow:'linebreak',textColor:[48,67,86],lineColor:[229,234,239],lineWidth:.15},headStyles:{fillColor:[8,116,189],textColor:[255,255,255],fontStyle:'bold'},alternateRowStyles:{fillColor:[248,250,252]},columnStyles:{0:{cellWidth:35,fontStyle:'bold'},1:{cellWidth:14,halign:'center'},2:{cellWidth:33},3:{cellWidth:47},4:{cellWidth:53}}})
+
+  let answersY=(doc.lastAutoTable?.finalY||33)+12
+  if(answersY>245){doc.addPage();answersY=20}
+  doc.setFont('helvetica','bold');doc.setFontSize(15);doc.setTextColor(24,48,72);doc.text('Risposte al questionario',14,answersY)
+  doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(112,128,145);doc.text('Le 40 risposte fornite dal candidato.',14,answersY+6)
+  autoTable(doc,{startY:answersY+11,margin:{left:14,right:14,top:18,bottom:17},head:[['#','Domanda','Risposta']],body:(r.answers_snapshot||[]).map(a=>[a.number,pdfText(a.question),pdfText(`${a.answer}. ${a.answer_label}`)]),styles:{fontSize:7,cellPadding:2.2,overflow:'linebreak',textColor:[48,67,86],lineColor:[229,234,239],lineWidth:.15},headStyles:{fillColor:[23,54,82],textColor:[255,255,255],fontStyle:'bold'},alternateRowStyles:{fillColor:[248,250,252]},columnStyles:{0:{cellWidth:9,halign:'center'},1:{cellWidth:113},2:{cellWidth:60}}})
+
+  drawPdfFooter(doc);doc.save(`${resultBaseName(r)}.pdf`)
+}
 
 
 function App(){useEffect(()=>{const sync=()=>applyTheme(localStorage.getItem(THEME_KEY)||'light');sync();const media=window.matchMedia('(prefers-color-scheme: dark)');media.addEventListener?.('change',sync);window.addEventListener('vv-theme-change',sync);return()=>{media.removeEventListener?.('change',sync);window.removeEventListener('vv-theme-change',sync)}},[]);return <Routes><Route path="/login" element={<Login/>}/><Route path="/set-password" element={<SetPassword/>}/><Route path="/q/:token" element={<CandidateTest/>}/><Route path="/hr/*" element={<HrGuard><HrLayout/></HrGuard>}/><Route path="*" element={<Navigate to="/hr" replace/>}/></Routes>}
@@ -117,7 +204,32 @@ function Dashboard(){
   </Page>
 }
 
-function Candidates(){const[list,setList]=useState([]),[open,setOpen]=useState(false),[link,setLink]=useState(''),[form,setForm]=useState({first_name:'',last_name:'',position:'',expires_at:''});const routeLocation=useLocation(),nav=useNavigate();useEffect(()=>{load();if(routeLocation.state?.openNew){setOpen(true);nav(routeLocation.pathname,{replace:true,state:null})}},[]);async function load(){const{data}=await supabase.from('candidates').select('*,invitations(expires_at),questionnaire_results:candidate_results(id)').order('created_at',{ascending:false});setList(data||[])}async function create(e){e.preventDefault();const{data:{user}}=await supabase.auth.getUser();const{data:c,error}=await supabase.from('candidates').insert({...form,expires_at:undefined,created_by:user.id}).select().single();if(error)return alert(error.message);const exp=form.expires_at?new Date(form.expires_at).toISOString():null;const{data:token,error:re}=await supabase.rpc('create_candidate_invitation',{p_candidate_id:c.id,p_expires_at:exp});if(re)return alert(re.message);const base=import.meta.env.VITE_PUBLIC_SITE_URL||location.origin;setLink(`${base}/q/${token}`);setForm({first_name:'',last_name:'',position:'',expires_at:''});setOpen(false);load()}function status(c){const exp=c.invitations?.[0]?.expires_at;if(c.status!=='completato'&&exp&&new Date(exp)<new Date())return 'Scaduto';return {da_compilare:'Da compilare',iniziato:'Iniziato',completato:'Completato',scaduto:'Scaduto'}[c.status]}return <Page title="Candidature" subtitle="Genera e gestisci i link personali" action={<button className="btn primary" onClick={()=>setOpen(true)}><Plus size={17}/>Nuova candidatura</button>}><section className="panel table-wrap"><table><thead><tr><th>Candidato</th><th>Posizione</th><th>Stato</th><th>Creata</th></tr></thead><tbody>{list.map(c=><tr key={c.id}><td><strong>{c.first_name} {c.last_name}</strong></td><td>{c.position}</td><td><span className={'badge '+status(c).toLowerCase().replaceAll(' ','-')}>{status(c)}</span></td><td>{fmt(c.created_at)}</td></tr>)}</tbody></table>{!list.length&&<Empty text="Nessuna candidatura."/>}</section>{open&&<Modal onClose={()=>setOpen(false)} title="Nuova candidatura"><form onSubmit={create} className="form-grid"><label>Nome<input required value={form.first_name} onChange={e=>setForm({...form,first_name:e.target.value})}/></label><label>Cognome<input required value={form.last_name} onChange={e=>setForm({...form,last_name:e.target.value})}/></label><label className="full">Posizione<input required value={form.position} onChange={e=>setForm({...form,position:e.target.value})}/></label><label className="full">Scadenza link<input type="datetime-local" value={form.expires_at} onChange={e=>setForm({...form,expires_at:e.target.value})}/></label><button className="btn primary full">Genera link</button></form></Modal>}{link&&<Modal onClose={()=>setLink('')} title="Link candidatura"><p className="muted">Il token non viene salvato in chiaro nel database. Copia ora il link.</p><div className="copybox"><input readOnly value={link}/><button className="btn" onClick={()=>navigator.clipboard.writeText(link)}><Copy size={16}/>Copia</button></div></Modal>}</Page>}
+function Candidates(){
+  const[list,setList]=useState([]),[open,setOpen]=useState(false),[link,setLink]=useState(''),[form,setForm]=useState({first_name:'',last_name:'',position:'',expires_at:''}),[canDelete,setCanDelete]=useState(false),[deletingId,setDeletingId]=useState(null)
+  const routeLocation=useLocation(),nav=useNavigate()
+  useEffect(()=>{load();loadPermissions();if(routeLocation.state?.openNew){setOpen(true);nav(routeLocation.pathname,{replace:true,state:null})}},[])
+  async function load(){const{data,error}=await supabase.from('candidates').select('*,invitations(expires_at),questionnaire_results:candidate_results(id)').order('created_at',{ascending:false});if(error)alert(error.message);setList(data||[])}
+  async function loadPermissions(){const{data:{user}}=await supabase.auth.getUser();if(!user)return;const{data}=await supabase.from('hr_users').select('role').eq('id',user.id).maybeSingle();setCanDelete(data?.role==='admin')}
+  async function create(e){e.preventDefault();const{data:{user}}=await supabase.auth.getUser();const{data:c,error}=await supabase.from('candidates').insert({...form,expires_at:undefined,created_by:user.id}).select().single();if(error)return alert(error.message);const exp=form.expires_at?new Date(form.expires_at).toISOString():null;const{data:token,error:re}=await supabase.rpc('create_candidate_invitation',{p_candidate_id:c.id,p_expires_at:exp});if(re)return alert(re.message);const base=import.meta.env.VITE_PUBLIC_SITE_URL||location.origin;setLink(`${base}/q/${token}`);setForm({first_name:'',last_name:'',position:'',expires_at:''});setOpen(false);load()}
+  async function deleteCandidate(c){
+    const name=`${c.first_name||''} ${c.last_name||''}`.trim()
+    const completed=c.status==='completato'||Boolean(c.questionnaire_results?.length)
+    const detail=completed?' Verranno eliminati anche risultato e risposte del questionario.':' Verrà eliminato anche il link di invito associato.'
+    if(!confirm(`Eliminare definitivamente la candidatura di ${name}?${detail} Questa operazione non può essere annullata.`))return
+    setDeletingId(c.id)
+    const{error}=await supabase.rpc('hr_delete_candidate',{p_candidate_id:c.id})
+    setDeletingId(null)
+    if(error)return alert(error.message)
+    await load()
+  }
+  function status(c){const exp=c.invitations?.[0]?.expires_at;if(c.status!=='completato'&&exp&&new Date(exp)<new Date())return 'Scaduto';return {da_compilare:'Da compilare',iniziato:'Iniziato',completato:'Completato',scaduto:'Scaduto'}[c.status]||c.status}
+  return <Page title="Candidature" subtitle="Genera e gestisci i link personali" action={<button className="btn primary" onClick={()=>setOpen(true)}><Plus size={17}/>Nuova candidatura</button>}>
+    <section className="panel table-wrap"><table><thead><tr><th>Candidato</th><th>Posizione</th><th>Stato</th><th>Creata</th>{canDelete&&<th className="candidate-table-actions">Azioni</th>}</tr></thead><tbody>{list.map(c=><tr key={c.id}><td><strong>{c.first_name} {c.last_name}</strong></td><td>{c.position}</td><td><span className={'badge '+status(c).toLowerCase().replaceAll(' ','-')}>{status(c)}</span></td><td>{fmt(c.created_at)}</td>{canDelete&&<td className="candidate-table-actions"><button className="icon-action delete-action" disabled={deletingId===c.id} title="Elimina candidatura" onClick={()=>deleteCandidate(c)}><Trash2 size={16}/></button></td>}</tr>)}</tbody></table>{!list.length&&<Empty text="Nessuna candidatura."/>}</section>
+    {canDelete&&<div className="candidate-delete-note"><ShieldCheck size={14}/><span>La cancellazione definitiva è disponibile solo agli HR Admin e rimuove anche i dati collegati alla candidatura.</span></div>}
+    {open&&<Modal onClose={()=>setOpen(false)} title="Nuova candidatura"><form onSubmit={create} className="form-grid"><label>Nome<input required value={form.first_name} onChange={e=>setForm({...form,first_name:e.target.value})}/></label><label>Cognome<input required value={form.last_name} onChange={e=>setForm({...form,last_name:e.target.value})}/></label><label className="full">Posizione<input required value={form.position} onChange={e=>setForm({...form,position:e.target.value})}/></label><label className="full">Scadenza link<input type="datetime-local" value={form.expires_at} onChange={e=>setForm({...form,expires_at:e.target.value})}/></label><button className="btn primary full">Genera link</button></form></Modal>}
+    {link&&<Modal onClose={()=>setLink('')} title="Link candidatura"><p className="muted">Il token non viene salvato in chiaro nel database. Copia ora il link.</p><div className="copybox"><input readOnly value={link}/><button className="btn" onClick={()=>navigator.clipboard.writeText(link)}><Copy size={16}/>Copia</button></div></Modal>}
+  </Page>
+}
 
 function Results(){
   const[list,setList]=useState([]),[selected,setSelected]=useState(null)
